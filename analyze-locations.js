@@ -110,13 +110,22 @@ async function analyzeExcelData(filename) {
   return locationStats;
 }
 
-function generateHeatmapHTML(locationStats) {
+function generateHeatmapHTML(locationStats, sourceFile) {
   const locations = Object.entries(locationStats)
     .map(([name, data]) => ({
       name,
       ...data
     }))
     .sort((a, b) => b.total - a.total);
+  
+  // Extract timestamp from filename or use current time
+  const timestamp = new Date().toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
   
   // Calculate center of Nebraska
   const centerLat = 41.5;
@@ -359,6 +368,7 @@ function generateHeatmapHTML(locationStats) {
     <div class="header">
         <h1>🗺️ AKRS Equipment Distribution Map</h1>
         <p>Interactive heat map showing equipment inventory across Nebraska locations</p>
+        <p style="font-size: 12px; opacity: 0.8; margin-top: 5px;">📊 Data Source: ${sourceFile} | Generated: ${timestamp}</p>
         <div class="toggle-container">
             <button class="toggle-btn active" data-filter="all">All Equipment</button>
             <button class="toggle-btn" data-filter="new">New Equipment</button>
@@ -599,12 +609,20 @@ async function main() {
     // Analyze the data
     const locationStats = await analyzeExcelData(excelFile);
     
+    // Create html directory if it doesn't exist
+    const htmlDir = 'html';
+    try {
+      await fs.mkdir(htmlDir, { recursive: true });
+    } catch (err) {
+      // Directory already exists, ignore
+    }
+    
     // Generate heat map HTML
     console.log('\nGenerating interactive map...');
-    const html = generateHeatmapHTML(locationStats);
+    const html = generateHeatmapHTML(locationStats, excelFile);
     
     // Save HTML file
-    const outputFile = 'akrs-location-heatmap.html';
+    const outputFile = `${htmlDir}/akrs-location-heatmap.html`;
     await fs.writeFile(outputFile, html);
     
     console.log('\n' + '='.repeat(60));
@@ -622,7 +640,7 @@ async function main() {
       console.log(`  ${index + 1}. ${name}: ${data.total} products (${data.new} new, ${data.used} used)`);
     });
     
-    console.log('\n💡 Open akrs-location-heatmap.html in your browser to view the map!');
+    console.log(`\n💡 Open ${outputFile} in your browser to view the map!`);
     console.log('='.repeat(60));
     
   } catch (error) {
