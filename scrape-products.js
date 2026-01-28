@@ -4,8 +4,7 @@ const ExcelJS = require('exceljs');
 const fs = require('fs').promises;
 
 const BASE_URL = 'https://www.akrs.com';
-const NEW_EQUIPMENT_URL = `${BASE_URL}/en-us/new-equipment-in-stock`;
-const USED_EQUIPMENT_URL = `${BASE_URL}/en-us/used-equipment`;
+const PRODUCTS_URL = `${BASE_URL}/en-us/new-equipment-in-stock`;
 
 // Add delay between requests to be respectful
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -29,12 +28,41 @@ async function processBatch(items, batchSize, processFn) {
 // Helper function to clean price text
 function cleanPrice(priceText) {
   if (!priceText) return '';
-  // Remove "Starting at", "List Price:", extra spaces, and keep only the dollar amount
+  // Remove "Starting at", extra spaces, and keep only the dollar amount
   return priceText
     .replace(/Starting at/gi, '')
-    .replace(/List Price:/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Helper function to scrape location from product detail page
+async function scrapeProductLocation(productUrl) {
+  try {
+    const fullUrl = productUrl.startsWith('http') ? productUrl : `${BASE_URL}${productUrl}`;
+    const response = await axios.get(fullUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      },
+      timeout: 10000
+    });
+
+    const $ = cheerio.load(response.data);
+    
+    // Find the location in product information section
+    let location = '';
+    $('.product-information-row').each((i, row) => {
+      const label = $(row).find('.product-information-label').text().trim();
+      if (label.toLowerCase().includes('location')) {
+        location = $(row).find('.product-information-value').text().trim();
+      }
+    });
+    
+    return location;
+  } catch (error) {
+    console.error(`  Error fetching location: ${error.message}`);
+    return '';
+  }
 }
 
 // Helper function to parse product name and extract details
@@ -54,58 +82,23 @@ function parseProductName(nameText) {
   return { year: '', model: nameText, productId: '' };
 }
 
-// Helper function to scrape location and hours from product detail page
-async function scrapeProductDetails(productUrl) {
-  try {
-    const fullUrl = productUrl.startsWith('http') ? productUrl : `${BASE_URL}${productUrl}`;
-    const response = await axios.get(fullUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      },
-      timeout: 10000
-    });
-
-    const $ = cheerio.load(response.data);
-    
-    // Find the location and hours in product information section
-    let location = '';
-    let hours = '';
-    
-    $('.product-information-row').each((i, row) => {
-      const label = $(row).find('.product-information-label').text().trim().toLowerCase();
-      const value = $(row).find('.product-information-value').text().trim();
-      
-      if (label.includes('location')) {
-        location = value;
-      } else if (label.includes('hour') || label.includes('hrs')) {
-        hours = value;
-      }
-    });
-    
-    return { location, hours };
-  } catch (error) {
-    console.error(`  Error fetching details: ${error.message}`);
-    return { location: '', hours: '' };
-  }
-}
-
-async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
-  console.log(`\nStarting to scrape ${equipmentType}...`);
-  console.log('='.repeat(60));
+async function scrapeProducts() {
+  console.log('Starting to scrape AKRS products...');
   
   const products = [];
   let pageNum = 0;
   let hasMorePages = true;
+  const maxPages = 50; // Increased to handle all 511 products (12 per page = ~43 pages)
   const productsPerPage = 12;
 
   try {
     while (hasMorePages && pageNum < maxPages) {
       console.log(`Fetching page ${pageNum + 1}...`);
       
+      // AKRS uses sz parameter for page size and start for pagination
       const url = pageNum === 0 
-        ? `${equipmentUrl}?sz=${productsPerPage}` 
-        : `${equipmentUrl}?sz=${productsPerPage}&start=${pageNum * productsPerPage}`;
+        ? `${PRODUCTS_URL}?sz=${productsPerPage}` 
+        : `${PRODUCTS_URL}?sz=${productsPerPage}&start=${pageNum * productsPerPage}`;
       
       const response = await axios.get(url, {
         headers: {
@@ -120,9 +113,11 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
       
       // Save HTML for debugging on first page
       if (pageNum === 0) {
-        await fs.writeFile(`debug-${equipmentType.toLowerCase().replace(' ', '-')}.html`, response.data);
+        await fs.writeFile('debug-page.html', response.data);
+        console.log('Saved HTML to debug-page.html for inspection');
       }
 
+      // Use the correct selector for AKRS product tiles
       const productTiles = $('.s-product-tile .product-tile');
       
       console.log(`Found ${productTiles.length} product tiles on page ${pageNum + 1}`);
@@ -138,23 +133,28 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
       productTiles.each((index, element) => {
         const $tile = $(element);
         
+        // Extract basic info
         const brand = $tile.find('.product-brand').text().trim();
         const productNameFull = $tile.find('.pdp-link a').text().trim();
         const productUrl = $tile.find('.pdp-link a').attr('href') || '';
         const priceRaw = $tile.find('.price .sales').text().trim();
         const price = cleanPrice(priceRaw);
         
+        // Parse product name to extract year, model, and ID
         const { year, model, productId } = parseProductName(productNameFull);
         
+        // Get badges (New, In Stock, etc.)
         const badges = [];
         $tile.find('.equipment-type-badge').each((i, badge) => {
           badges.push($(badge).text().trim());
         });
         const status = badges.join(', ');
         
+        // Get image URL
         const imageUrl = $tile.find('.tile-image').first().attr('src') || 
                         $tile.find('.tile-image').first().attr('data-src') || '';
         
+        // Get category from URL
         const categoryMatch = productUrl.match(/\/en-us\/([^\/]+)\//);
         const category = categoryMatch ? categoryMatch[1].replace(/-/g, ' ') : '';
 
@@ -169,8 +169,7 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
           category: category,
           productUrl: productUrl,
           imageUrl: imageUrl,
-          location: '',
-          hours: ''
+          location: '' // Will be filled in next step
         };
         
         pageProducts.push(product);
@@ -178,19 +177,17 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
 
       console.log(`Extracted ${productTiles.length} products from listing page.`);
       
-      // Fetch details in parallel
-      console.log(`Fetching details from ${pageProducts.length} product pages in batches...`);
+      // Now fetch location for each product by visiting detail pages in parallel
+      console.log(`Fetching locations from ${pageProducts.length} product pages in batches...`);
       
-      const BATCH_SIZE = 10;
+      const BATCH_SIZE = 10; // Process 10 products concurrently
       let processedCount = 0;
       
       await processBatch(pageProducts, BATCH_SIZE, async (product) => {
         processedCount++;
-        const details = await scrapeProductDetails(product.productUrl);
-        product.location = details.location;
-        product.hours = details.hours;
+        product.location = await scrapeProductLocation(product.productUrl);
         
-        console.log(`  [${processedCount}/${pageProducts.length}] ${product.productName} - ${product.location}${product.hours ? ` (${product.hours} hrs)` : ''}`);
+        console.log(`  [${processedCount}/${pageProducts.length}] ${product.productName} - ${product.location}`);
         
         products.push(product);
         return product;
@@ -198,6 +195,7 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
 
       console.log(`Page ${pageNum + 1} complete. Total products: ${products.length}`);
 
+      // Continue to next page if we got a full page
       if (productTiles.length >= productsPerPage) {
         pageNum++;
         console.log('Waiting 2 seconds before next request...');
@@ -208,11 +206,11 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
       }
     }
 
-    console.log(`✓ Total ${equipmentType} scraped: ${products.length}`);
+    console.log(`\n✓ Total products scraped: ${products.length}`);
     return products;
 
   } catch (error) {
-    console.error(`Error scraping ${equipmentType}:`, error.message);
+    console.error('Error scraping products:', error.message);
     if (error.response) {
       console.error('Response status:', error.response.status);
     }
@@ -221,15 +219,14 @@ async function scrapeEquipment(equipmentUrl, equipmentType, maxPages) {
   }
 }
 
-async function saveToExcel(newProducts, usedProducts) {
-  console.log('\n' + '='.repeat(60));
-  console.log('Creating combined Excel file...');
+async function saveToExcel(products) {
+  console.log('\nCreating Excel file...');
   
   const workbook = new ExcelJS.Workbook();
-  
-  // Create New Equipment Sheet
-  const newSheet = workbook.addWorksheet('New Equipment');
-  newSheet.columns = [
+  const worksheet = workbook.addWorksheet('AKRS Products');
+
+  // Define columns
+  worksheet.columns = [
     { header: 'Product Name', key: 'productName', width: 40 },
     { header: 'Brand', key: 'brand', width: 15 },
     { header: 'Model', key: 'model', width: 20 },
@@ -244,17 +241,17 @@ async function saveToExcel(newProducts, usedProducts) {
   ];
 
   // Style header row
-  newSheet.getRow(1).font = { bold: true };
-  newSheet.getRow(1).fill = {
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.getRow(1).fill = {
     type: 'pattern',
     pattern: 'solid',
     fgColor: { argb: 'FF367C2B' } // John Deere green
   };
-  newSheet.getRow(1).font.color = { argb: 'FFFFFFFF' };
+  worksheet.getRow(1).font.color = { argb: 'FFFFFFFF' }; // White text
 
-  // Add new equipment data
-  newProducts.forEach(product => {
-    const row = newSheet.addRow({
+  // Add data
+  products.forEach(product => {
+    const row = worksheet.addRow({
       productName: product.productName,
       brand: product.brand,
       model: product.model,
@@ -268,72 +265,31 @@ async function saveToExcel(newProducts, usedProducts) {
       imageUrl: product.imageUrl ? (product.imageUrl.startsWith('http') ? product.imageUrl : `${BASE_URL}${product.imageUrl}`) : '',
     });
     
+    // Make URLs clickable
     if (product.productUrl) {
       const fullUrl = product.productUrl.startsWith('http') ? product.productUrl : `${BASE_URL}${product.productUrl}`;
-      row.getCell('productUrl').value = { text: fullUrl, hyperlink: fullUrl };
+      row.getCell('productUrl').value = {
+        text: fullUrl,
+        hyperlink: fullUrl
+      };
       row.getCell('productUrl').font = { color: { argb: 'FF0000FF' }, underline: true };
     }
   });
 
-  newSheet.autoFilter = { from: 'A1', to: 'K1' };
-  newSheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
-
-  // Create Used Equipment Sheet
-  const usedSheet = workbook.addWorksheet('Used Equipment');
-  usedSheet.columns = [
-    { header: 'Product Name', key: 'productName', width: 40 },
-    { header: 'Brand', key: 'brand', width: 15 },
-    { header: 'Model', key: 'model', width: 20 },
-    { header: 'Year', key: 'year', width: 10 },
-    { header: 'Product ID', key: 'productId', width: 15 },
-    { header: 'Price', key: 'price', width: 15 },
-    { header: 'Hours', key: 'hours', width: 12 },
-    { header: 'Location', key: 'location', width: 20 },
-    { header: 'Status', key: 'status', width: 20 },
-    { header: 'Category', key: 'category', width: 30 },
-    { header: 'Product URL', key: 'productUrl', width: 60 },
-    { header: 'Image URL', key: 'imageUrl', width: 60 },
-  ];
-
-  // Style header row
-  usedSheet.getRow(1).font = { bold: true };
-  usedSheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF367C2B' }
+  // Auto-filter
+  worksheet.autoFilter = {
+    from: 'A1',
+    to: `K1`
   };
-  usedSheet.getRow(1).font.color = { argb: 'FFFFFFFF' };
 
-  // Add used equipment data
-  usedProducts.forEach(product => {
-    const row = usedSheet.addRow({
-      productName: product.productName,
-      brand: product.brand,
-      model: product.model,
-      year: product.year,
-      productId: product.productId,
-      price: product.price,
-      hours: product.hours,
-      location: product.location,
-      status: product.status,
-      category: product.category,
-      productUrl: product.productUrl ? (product.productUrl.startsWith('http') ? product.productUrl : `${BASE_URL}${product.productUrl}`) : '',
-      imageUrl: product.imageUrl ? (product.imageUrl.startsWith('http') ? product.imageUrl : `${BASE_URL}${product.imageUrl}`) : '',
-    });
-    
-    if (product.productUrl) {
-      const fullUrl = product.productUrl.startsWith('http') ? product.productUrl : `${BASE_URL}${product.productUrl}`;
-      row.getCell('productUrl').value = { text: fullUrl, hyperlink: fullUrl };
-      row.getCell('productUrl').font = { color: { argb: 'FF0000FF' }, underline: true };
-    }
-  });
-
-  usedSheet.autoFilter = { from: 'A1', to: 'L1' };
-  usedSheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+  // Freeze header row
+  worksheet.views = [
+    { state: 'frozen', xSplit: 0, ySplit: 1 }
+  ];
 
   // Save file
   const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
-  const filename = `akrs-all-equipment-${timestamp}.xlsx`;
+  const filename = `akrs-products-${timestamp}.xlsx`;
   await workbook.xlsx.writeFile(filename);
   console.log(`✓ Excel file saved: ${filename}`);
   
@@ -342,44 +298,43 @@ async function saveToExcel(newProducts, usedProducts) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('AKRS All Equipment Scraper');
+  console.log('AKRS Product Scraper');
   console.log('='.repeat(60));
   
-  const startTime = Date.now();
-  
   try {
-    // Scrape new equipment
-    const newProducts = await scrapeEquipment(NEW_EQUIPMENT_URL, 'New Equipment', 50);
+    const products = await scrapeProducts();
     
-    // Scrape used equipment
-    const usedProducts = await scrapeEquipment(USED_EQUIPMENT_URL, 'Used Equipment', 80);
-    
-    if (newProducts.length === 0 && usedProducts.length === 0) {
+    if (products.length === 0) {
       console.log('\n❌ No products found. The website structure may have changed.');
+      console.log('Check debug-page.html and update the CSS selectors if needed.');
       return;
     }
 
-    const filename = await saveToExcel(newProducts, usedProducts);
-    
-    const elapsedTime = Math.round((Date.now() - startTime) / 1000);
+    const filename = await saveToExcel(products);
     
     console.log('\n' + '='.repeat(60));
     console.log('✓ Scraping Complete!');
     console.log('='.repeat(60));
-    console.log(`New Equipment: ${newProducts.length} products`);
-    console.log(`Used Equipment: ${usedProducts.length} products`);
-    console.log(`Total: ${newProducts.length + usedProducts.length} products`);
-    console.log(`Time: ${Math.floor(elapsedTime / 60)}m ${elapsedTime % 60}s`);
-    console.log(`File: ${filename}`);
+    console.log(`Products scraped: ${products.length}`);
+    console.log(`File saved: ${filename}`);
     console.log('='.repeat(60));
+    
+    // Show sample of first product
+    if (products.length > 0) {
+      console.log('\nSample product:');
+      console.log(`  Name: ${products[0].productName}`);
+      console.log(`  Brand: ${products[0].brand}`);
+      console.log(`  Price: ${products[0].price}`);
+      console.log(`  Location: ${products[0].location}`);
+      console.log(`  Status: ${products[0].status}`);
+    }
     
     // Clean up debug HTML files
     try {
-      await fs.unlink('debug-new-equipment.html');
-      await fs.unlink('debug-used-equipment.html');
+      await fs.unlink('debug-page.html');
       console.log('\n🧹 Cleaned up debug files');
     } catch (err) {
-      // Files don't exist or already deleted, ignore
+      // File doesn't exist or already deleted, ignore
     }
     
   } catch (error) {

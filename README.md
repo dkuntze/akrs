@@ -47,7 +47,7 @@ npm run all
 npm run analyze
 
 # 3. Open the map in your browser
-open akrs-location-heatmap.html
+open docs/akrs-location-heatmap.html
 ```
 
 **Result:** Excel file with 1,455 products + interactive map showing geographic distribution!
@@ -146,7 +146,7 @@ node analyze-locations.js
 3. Generates interactive heat map HTML file
 4. Shows distribution across Nebraska
 
-**Output:** `akrs-location-heatmap.html` (open in browser)
+**Output:** `docs/akrs-location-heatmap.html` (open in browser)
 
 **Features:**
 - ✅ Interactive map with clickable markers
@@ -167,7 +167,7 @@ All scripts generate timestamped Excel files:
 | `npm run all` | `akrs-all-equipment-[timestamp].xlsx` | Excel (2 sheets) | ~1,455 products |
 | `npm start` | `akrs-products-[timestamp].xlsx` | Excel (1 sheet) | ~511 products |
 | `npm run used` | `akrs-used-equipment-[timestamp].xlsx` | Excel (1 sheet) | ~944 products |
-| `npm run analyze` | `akrs-location-heatmap.html` | Interactive Map | All locations |
+| `npm run analyze` | `docs/akrs-location-heatmap.html` | Interactive Map | All locations |
 
 **Timestamp format:** `YYYY-MM-DDTHH-MM-SS`  
 **Example:** `akrs-all-equipment-2026-01-27T03-34-22.xlsx`
@@ -176,12 +176,13 @@ All scripts generate timestamped Excel files:
 
 ### Heat Map Preview
 
-When you open `akrs-location-heatmap.html`, you'll see:
+When you open `docs/akrs-location-heatmap.html`, you'll see:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ 🗺️ AKRS Equipment Distribution Map                            │
 │ Interactive heat map showing equipment inventory across NE     │
+│ 📊 Data: akrs-all-equipment-*.xlsx | Scraped: Jan 27, 03:41 AM │
 │ [All Equipment] [New Equipment] [Used Equipment]               │
 ├─────────────────────────────┬───────────────────────────────────┤
 │                             │ 📊 Inventory Summary              │
@@ -208,6 +209,7 @@ When you open `akrs-location-heatmap.html`, you'll see:
 - 📍 Click locations in sidebar to fly to them
 - 📊 See new/used breakdown for each location
 - 🔄 Dynamic updates - markers and stats change with filter
+- 🕒 Timestamp shows when data was scraped (extracted from Excel filename)
 
 ## Excel File Structure
 
@@ -347,11 +349,15 @@ tail -f scrape.log  # Monitor progress
 - **Batch delay:** 500ms between detail page batches
 - **Timeout:** 10 seconds per product detail page
 - **Retry logic:** Continues on individual failures
-- **Debug files:** Saves first page HTML for troubleshooting
+- **Debug files:** Saves first page HTML for troubleshooting (auto-cleaned after successful completion)
 
 ## Heat Map Visualization
 
 The location analyzer creates an interactive map showing equipment distribution:
+
+**Output Location:** All heat maps are saved to the `docs/` directory for better organization (and GitHub Pages compatibility).
+
+**Data Timestamp:** The map UI displays the source Excel filename and the date/time when the data was originally scraped (extracted from the filename timestamp), so you always know how current your data is.
 
 ### Features
 
@@ -390,7 +396,7 @@ npm run all
 npm run analyze
 
 # 3. Open in browser
-open akrs-location-heatmap.html
+open docs/akrs-location-heatmap.html
 ```
 
 The analyzer automatically finds and uses your most recent Excel file.
@@ -474,9 +480,10 @@ File: akrs-all-equipment-2026-01-27T03-34-22.xlsx
 ## Troubleshooting
 
 ### No Products Found
-1. Check `debug-*.html` files created in the project directory
-2. Website structure may have changed - update CSS selectors
-3. Verify network connectivity to https://www.akrs.com
+1. Check `debug-*.html` files (created on first page, auto-deleted after success)
+2. If scraper fails, debug files remain for inspection
+3. Website structure may have changed - update CSS selectors
+4. Verify network connectivity to https://www.akrs.com
 
 ### Slow Performance
 1. Check your internet connection speed
@@ -520,9 +527,10 @@ akrs/
 └── .gitignore                 # Excluded files
 
 Generated Files:
-├── akrs-all-equipment-*.xlsx  # Combined data
-├── akrs-location-heatmap.html # Interactive map
-└── debug-*.html               # Debug files (first page)
+├── akrs-all-equipment-*.xlsx      # Combined data
+├── docs/
+│   └── akrs-location-heatmap.html # Interactive map
+└── debug-*.html                   # Temp debug files (auto-cleaned on success)
 ```
 
 ## Summary

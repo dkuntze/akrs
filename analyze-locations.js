@@ -118,14 +118,20 @@ function generateHeatmapHTML(locationStats, sourceFile) {
     }))
     .sort((a, b) => b.total - a.total);
   
-  // Extract timestamp from filename or use current time
-  const timestamp = new Date().toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  // Extract timestamp from filename (format: akrs-all-equipment-2026-01-27T03-41-58.xlsx)
+  let timestamp = 'Unknown';
+  const timestampMatch = sourceFile.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (timestampMatch) {
+    const [_, year, month, day, hour, minute, second] = timestampMatch;
+    const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
+    timestamp = date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
   
   // Calculate center of Nebraska
   const centerLat = 41.5;
@@ -368,7 +374,7 @@ function generateHeatmapHTML(locationStats, sourceFile) {
     <div class="header">
         <h1>🗺️ AKRS Equipment Distribution Map</h1>
         <p>Interactive heat map showing equipment inventory across Nebraska locations</p>
-        <p style="font-size: 12px; opacity: 0.8; margin-top: 5px;">📊 Data Source: ${sourceFile} | Generated: ${timestamp}</p>
+        <p style="font-size: 12px; opacity: 0.8; margin-top: 5px;">📊 Data Source: ${sourceFile} | Data Scraped: ${timestamp}</p>
         <div class="toggle-container">
             <button class="toggle-btn active" data-filter="all">All Equipment</button>
             <button class="toggle-btn" data-filter="new">New Equipment</button>
@@ -609,10 +615,10 @@ async function main() {
     // Analyze the data
     const locationStats = await analyzeExcelData(excelFile);
     
-    // Create html directory if it doesn't exist
-    const htmlDir = 'html';
+    // Create docs directory if it doesn't exist
+    const docsDir = 'docs';
     try {
-      await fs.mkdir(htmlDir, { recursive: true });
+      await fs.mkdir(docsDir, { recursive: true });
     } catch (err) {
       // Directory already exists, ignore
     }
@@ -622,7 +628,7 @@ async function main() {
     const html = generateHeatmapHTML(locationStats, excelFile);
     
     // Save HTML file
-    const outputFile = `${htmlDir}/akrs-location-heatmap.html`;
+    const outputFile = `${docsDir}/akrs-location-heatmap.html`;
     await fs.writeFile(outputFile, html);
     
     console.log('\n' + '='.repeat(60));
