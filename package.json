@@ -1,0 +1,24 @@
+{
+  "name": "akrs-product-scraper",
+  "version": "1.0.0",
+  "description": "Scrapes AKRS new equipment products and exports to Excel",
+  "main": "scrape-products.js",
+  "scripts": {
+    "start": "node scrape-products.js",
+    "used": "node scrape-used-equipment.js",
+    "all": "node scrape-all-equipment.js",
+    "analyze": "node analyze-locations.js"
+  },
+  "keywords": [
+    "scraper",
+    "excel",
+    "akrs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "exceljs": "^4.4.0"
+  }
+}
