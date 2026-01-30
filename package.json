@@ -7,6 +7,7 @@
     "start": "node scrape-products.js",
     "used": "node scrape-used-equipment.js",
     "all": "node scrape-all-equipment.js",
+    "tractor-house": "node scrape-tractor-house.js",
     "analyze": "node analyze-locations.js"
   },
   "keywords": [
@@ -19,6 +20,7 @@
   "dependencies": {
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "puppeteer": "^24.36.1"
   }
 }

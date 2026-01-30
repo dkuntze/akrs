@@ -229,11 +229,12 @@
     <div class="header">
         <h1>🗺️ AKRS Equipment Distribution Map</h1>
         <p>Interactive heat map showing equipment inventory across Nebraska locations</p>
-        <p style="font-size: 12px; opacity: 0.8; margin-top: 5px;">📊 Data Source: akrs-all-equipment-2026-01-27T03-41-58.xlsx | Data Scraped: Jan 27, 2026, 03:41 AM</p>
+        <p style="font-size: 11px; opacity: 0.7;">Latest Data: Jan 27, 2026, 03:41 AM</p>
         <div class="toggle-container">
             <button class="toggle-btn active" data-filter="all">All Equipment</button>
             <button class="toggle-btn" data-filter="new">New Equipment</button>
             <button class="toggle-btn" data-filter="used">Used Equipment</button>
+            <button class="toggle-btn" data-filter="tractorHouse">Tractor House</button>
         </div>
     </div>
     
@@ -256,8 +257,31 @@
                     <span class="stat-value" id="used-products">0</span>
                 </div>
                 <div class="stat-item">
+                    <span class="stat-label">Tractor House</span>
+                    <span class="stat-value" id="tractorhouse-products">0</span>
+                </div>
+                <div class="stat-item">
                     <span class="stat-label">Store Locations</span>
                     <span class="stat-value" id="location-count">0</span>
+                </div>
+            </div>
+            
+            <div class="stats-summary" style="margin-top: 15px; border-left: 4px solid #ff9800;">
+                <h3 style="color: #ff9800;">🔍 Duplicate Analysis</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Duplicates Found</span>
+                    <span class="stat-value">745</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Overlap Rate</span>
+                    <span class="stat-value">78.9%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total Unique Items</span>
+                    <span class="stat-value" style="color: #367C2B; font-size: 18px;">605</span>
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
+                    <strong>ℹ️ Note:</strong> 78.9% of Used Equipment items also appear in Tractor House. The systems share 745 items.
                 </div>
             </div>
             
@@ -265,15 +289,15 @@
                 <h4>Heat Map Legend</h4>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #d32f2f;"></div>
-                    <span>High Inventory (50+ products)</span>
+                    <span>High Inventory (150+ products)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #ff9800;"></div>
-                    <span>Medium Inventory (20-49 products)</span>
+                    <span>Medium Inventory (100-150 products)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #4caf50;"></div>
-                    <span>Low Inventory (1-19 products)</span>
+                    <span>Low Inventory (<100 products)</span>
                 </div>
             </div>
             
@@ -290,9 +314,10 @@
         const locations = [
   {
     "name": "O'NEILL",
-    "total": 135,
+    "total": 227,
     "new": 38,
     "used": 97,
+    "tractorHouse": 92,
     "coordinates": {
       "lat": 42.4578,
       "lng": -98.6473,
@@ -300,10 +325,23 @@
     }
   },
   {
+    "name": "MCCOOK",
+    "total": 207,
+    "new": 12,
+    "used": 100,
+    "tractorHouse": 95,
+    "coordinates": {
+      "lat": 40.2017,
+      "lng": -100.6251,
+      "city": "McCook, NE"
+    }
+  },
+  {
     "name": "NORFOLK",
-    "total": 127,
+    "total": 197,
     "new": 77,
     "used": 50,
+    "tractorHouse": 70,
     "coordinates": {
       "lat": 42.0281,
       "lng": -97.417,
@@ -312,9 +350,10 @@
   },
   {
     "name": "ELKHORN",
-    "total": 110,
+    "total": 178,
     "new": 64,
     "used": 46,
+    "tractorHouse": 68,
     "coordinates": {
       "lat": 41.2858,
       "lng": -96.2364,
@@ -323,9 +362,10 @@
   },
   {
     "name": "SYRACUSE",
-    "total": 100,
+    "total": 164,
     "new": 49,
     "used": 51,
+    "tractorHouse": 64,
     "coordinates": {
       "lat": 40.6564,
       "lng": -96.1881,
@@ -334,9 +374,10 @@
   },
   {
     "name": "NELIGH",
-    "total": 85,
+    "total": 140,
     "new": 42,
     "used": 43,
+    "tractorHouse": 55,
     "coordinates": {
       "lat": 42.1281,
       "lng": -98.0298,
@@ -344,21 +385,11 @@
     }
   },
   {
-    "name": "SEWARD",
-    "total": 73,
-    "new": 32,
-    "used": 41,
-    "coordinates": {
-      "lat": 40.9069,
-      "lng": -97.0989,
-      "city": "Seward, NE"
-    }
-  },
-  {
     "name": "GRAND ISLAND",
-    "total": 72,
+    "total": 129,
     "new": 36,
     "used": 36,
+    "tractorHouse": 57,
     "coordinates": {
       "lat": 40.925,
       "lng": -98.342,
@@ -366,21 +397,23 @@
     }
   },
   {
-    "name": "ALBION",
-    "total": 68,
-    "new": 29,
-    "used": 39,
+    "name": "SEWARD",
+    "total": 125,
+    "new": 32,
+    "used": 41,
+    "tractorHouse": 52,
     "coordinates": {
-      "lat": 41.6906,
-      "lng": -98.0053,
-      "city": "Albion, NE"
+      "lat": 40.9069,
+      "lng": -97.0989,
+      "city": "Seward, NE"
     }
   },
   {
     "name": "NORTH PLATTE",
-    "total": 61,
+    "total": 116,
     "new": 22,
     "used": 39,
+    "tractorHouse": 55,
     "coordinates": {
       "lat": 41.1239,
       "lng": -100.7654,
@@ -388,21 +421,23 @@
     }
   },
   {
-    "name": "YORK",
-    "total": 44,
-    "new": 6,
-    "used": 38,
+    "name": "ALBION",
+    "total": 114,
+    "new": 29,
+    "used": 39,
+    "tractorHouse": 46,
     "coordinates": {
-      "lat": 40.8678,
-      "lng": -97.592,
-      "city": "York, NE"
+      "lat": 41.6906,
+      "lng": -98.0053,
+      "city": "Albion, NE"
     }
   },
   {
     "name": "BROKEN BOW",
-    "total": 42,
+    "total": 99,
     "new": 5,
     "used": 37,
+    "tractorHouse": 57,
     "coordinates": {
       "lat": 41.4017,
       "lng": -99.6398,
@@ -410,21 +445,23 @@
     }
   },
   {
-    "name": "AUBURN",
-    "total": 38,
-    "new": 10,
-    "used": 28,
+    "name": "YORK",
+    "total": 97,
+    "new": 6,
+    "used": 38,
+    "tractorHouse": 53,
     "coordinates": {
-      "lat": 40.3925,
-      "lng": -95.8392,
-      "city": "Auburn, NE"
+      "lat": 40.8678,
+      "lng": -97.592,
+      "city": "York, NE"
     }
   },
   {
     "name": "DAVID CITY",
-    "total": 36,
+    "total": 70,
     "new": 7,
     "used": 29,
+    "tractorHouse": 34,
     "coordinates": {
       "lat": 41.2517,
       "lng": -97.13,
@@ -433,9 +470,10 @@
   },
   {
     "name": "RAVENNA",
-    "total": 35,
+    "total": 66,
     "new": 5,
     "used": 30,
+    "tractorHouse": 31,
     "coordinates": {
       "lat": 41.0261,
       "lng": -98.9123,
@@ -443,10 +481,23 @@
     }
   },
   {
+    "name": "AUBURN",
+    "total": 66,
+    "new": 10,
+    "used": 28,
+    "tractorHouse": 28,
+    "coordinates": {
+      "lat": 40.3925,
+      "lng": -95.8392,
+      "city": "Auburn, NE"
+    }
+  },
+  {
     "name": "ORD",
-    "total": 32,
+    "total": 65,
     "new": 3,
     "used": 29,
+    "tractorHouse": 33,
     "coordinates": {
       "lat": 41.6031,
       "lng": -98.9273,
@@ -454,32 +505,11 @@
     }
   },
   {
-    "name": "GRETNA",
-    "total": 31,
-    "new": 19,
-    "used": 12,
-    "coordinates": {
-      "lat": 41.14,
-      "lng": -96.2397,
-      "city": "Gretna, NE"
-    }
-  },
-  {
-    "name": "AINSWORTH",
-    "total": 31,
-    "new": 10,
-    "used": 21,
-    "coordinates": {
-      "lat": 42.5506,
-      "lng": -99.8626,
-      "city": "Ainsworth, NE"
-    }
-  },
-  {
     "name": "OSCEOLA",
-    "total": 29,
+    "total": 62,
     "new": 3,
     "used": 26,
+    "tractorHouse": 33,
     "coordinates": {
       "lat": 41.1783,
       "lng": -97.545,
@@ -487,10 +517,35 @@
     }
   },
   {
+    "name": "CRETE",
+    "total": 57,
+    "new": 2,
+    "used": 22,
+    "tractorHouse": 33,
+    "coordinates": {
+      "lat": 40.6278,
+      "lng": -96.9614,
+      "city": "Crete, NE"
+    }
+  },
+  {
+    "name": "AINSWORTH",
+    "total": 55,
+    "new": 10,
+    "used": 21,
+    "tractorHouse": 24,
+    "coordinates": {
+      "lat": 42.5506,
+      "lng": -99.8626,
+      "city": "Ainsworth, NE"
+    }
+  },
+  {
     "name": "PLAINVIEW",
-    "total": 28,
+    "total": 54,
     "new": 6,
     "used": 22,
+    "tractorHouse": 26,
     "coordinates": {
       "lat": 42.3472,
       "lng": -97.7917,
@@ -499,9 +554,10 @@
   },
   {
     "name": "GENEVA",
-    "total": 26,
+    "total": 52,
     "new": 5,
     "used": 21,
+    "tractorHouse": 26,
     "coordinates": {
       "lat": 40.5267,
       "lng": -97.5961,
@@ -510,9 +566,10 @@
   },
   {
     "name": "ST. PAUL",
-    "total": 26,
+    "total": 50,
     "new": 8,
     "used": 18,
+    "tractorHouse": 24,
     "coordinates": {
       "lat": 41.2147,
       "lng": -98.4584,
@@ -520,21 +577,23 @@
     }
   },
   {
-    "name": "SPALDING",
-    "total": 25,
-    "new": 8,
-    "used": 17,
+    "name": "GRETNA",
+    "total": 49,
+    "new": 19,
+    "used": 12,
+    "tractorHouse": 18,
     "coordinates": {
-      "lat": 41.6872,
-      "lng": -98.3742,
-      "city": "Spalding, NE"
+      "lat": 41.14,
+      "lng": -96.2397,
+      "city": "Gretna, NE"
     }
   },
   {
     "name": "AURORA",
-    "total": 24,
+    "total": 44,
     "new": 8,
     "used": 16,
+    "tractorHouse": 20,
     "coordinates": {
       "lat": 40.8672,
       "lng": -98.0042,
@@ -542,21 +601,11 @@
     }
   },
   {
-    "name": "CRETE",
-    "total": 24,
-    "new": 2,
-    "used": 22,
-    "coordinates": {
-      "lat": 40.6278,
-      "lng": -96.9614,
-      "city": "Crete, NE"
-    }
-  },
-  {
     "name": "OBERLIN",
-    "total": 22,
+    "total": 43,
     "new": 4,
     "used": 18,
+    "tractorHouse": 21,
     "coordinates": {
       "lat": 39.8197,
       "lng": -100.5282,
@@ -564,10 +613,23 @@
     }
   },
   {
+    "name": "SPALDING",
+    "total": 42,
+    "new": 8,
+    "used": 17,
+    "tractorHouse": 17,
+    "coordinates": {
+      "lat": 41.6872,
+      "lng": -98.3742,
+      "city": "Spalding, NE"
+    }
+  },
+  {
     "name": "CENTRAL CITY",
-    "total": 19,
+    "total": 38,
     "new": 1,
     "used": 18,
+    "tractorHouse": 19,
     "coordinates": {
       "lat": 41.1161,
       "lng": -98.002,
@@ -575,7 +637,7 @@
     }
   }
 ];
-        const maxProducts = 135;
+        const maxProducts = 227;
         let currentFilter = 'all';
         let markers = [];
         
@@ -590,9 +652,9 @@
         
         // Function to get color based on inventory size
         function getColor(count) {
-            if (count > 50) return '#d32f2f';      // Red for high
-            if (count > 20) return '#ff9800';      // Orange for medium
-            return '#4caf50';                       // Green for low
+            if (count > 150) return '#d32f2f';     // Red for high (>150)
+            if (count > 100) return '#ff9800';     // Orange for medium (100-150)
+            return '#4caf50';                       // Green for low (<100)
         }
         
         // Function to get radius based on inventory size
@@ -607,6 +669,7 @@
         function getCount(location, filter) {
             if (filter === 'new') return location.new;
             if (filter === 'used') return location.used;
+            if (filter === 'tractorHouse') return location.tractorHouse;
             return location.total;
         }
         
@@ -661,6 +724,10 @@
                             <span>Used Equipment:</span>
                             <strong style="color: #ff9800;">${location.used}</strong>
                         </div>
+                        <div class="popup-stat">
+                            <span>Tractor House:</span>
+                            <strong style="color: #2196f3;">${location.tractorHouse}</strong>
+                        </div>
                     </div>
                 `;
                 
@@ -680,12 +747,14 @@
             const totalProducts = locations.reduce((sum, loc) => sum + loc.total, 0);
             const totalNew = locations.reduce((sum, loc) => sum + loc.new, 0);
             const totalUsed = locations.reduce((sum, loc) => sum + loc.used, 0);
+            const totalTractorHouse = locations.reduce((sum, loc) => sum + loc.tractorHouse, 0);
             
             const activeLocations = locations.filter(loc => getCount(loc, filter) > 0).length;
             
             document.getElementById('total-products').textContent = totalProducts.toLocaleString();
             document.getElementById('new-products').textContent = totalNew.toLocaleString();
             document.getElementById('used-products').textContent = totalUsed.toLocaleString();
+            document.getElementById('tractorhouse-products').textContent = totalTractorHouse.toLocaleString();
             document.getElementById('location-count').textContent = activeLocations;
         }
         
@@ -711,6 +780,7 @@
                     <div class="location-details">
                         <span>New: ${location.new}</span>
                         <span>Used: ${location.used}</span>
+                        <span>TH: ${location.tractorHouse}</span>
                     </div>
                 `;
                 

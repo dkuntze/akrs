@@ -1,6 +1,22 @@
 const ExcelJS = require('exceljs');
 const fs = require('fs').promises;
 
+// Helper to normalize strings for comparison
+function normalize(str) {
+  if (!str) return '';
+  return str.toString().toUpperCase().trim().replace(/\s+/g, ' ');
+}
+
+// Helper to create a match key for duplicate detection
+function createMatchKey(item) {
+  const year = item.year || '';
+  const make = normalize(item.make || '');
+  const model = normalize(item.model || '');
+  const location = normalize(item.location || '');
+  
+  return `${year}|${make}|${model}|${location}`;
+}
+
 // Nebraska AKRS Store Locations (coordinates from Google Maps)
 const STORE_LOCATIONS = {
   'AINSWORTH': { lat: 42.5506, lng: -99.8626, city: 'Ainsworth, NE' },
@@ -15,7 +31,7 @@ const STORE_LOCATIONS = {
   'GENEVA': { lat: 40.5267, lng: -97.5961, city: 'Geneva, NE' },
   'GRAND ISLAND': { lat: 40.9250, lng: -98.3420, city: 'Grand Island, NE' },
   'GRETNA': { lat: 41.1400, lng: -96.2397, city: 'Gretna, NE' },
-  'McCOOK': { lat: 40.2017, lng: -100.6251, city: 'McCook, NE' },
+  'MCCOOK': { lat: 40.2017, lng: -100.6251, city: 'McCook, NE' },
   'NELIGH': { lat: 42.1281, lng: -98.0298, city: 'Neligh, NE' },
   'NORFOLK': { lat: 42.0281, lng: -97.4170, city: 'Norfolk, NE' },
   'NORTH PLATTE': { lat: 41.1239, lng: -100.7654, city: 'North Platte, NE' },
@@ -32,7 +48,7 @@ const STORE_LOCATIONS = {
   'YORK': { lat: 40.8678, lng: -97.5920, city: 'York, NE' }
 };
 
-async function findLatestExcelFile() {
+async function findExcelFiles() {
   const files = await fs.readdir('.');
   const excelFiles = files.filter(f => f.startsWith('akrs-') && f.endsWith('.xlsx'));
   
@@ -40,7 +56,7 @@ async function findLatestExcelFile() {
     throw new Error('No Excel files found. Run a scraper first.');
   }
   
-  // Sort by modification time and get the latest
+  // Sort by modification time
   const fileStats = await Promise.all(
     excelFiles.map(async (file) => ({
       name: file,
@@ -49,68 +65,167 @@ async function findLatestExcelFile() {
   );
   
   fileStats.sort((a, b) => b.mtime - a.mtime);
-  return fileStats[0].name;
+  
+  // Return object with latest file and categorize files by type
+  return {
+    all: fileStats.map(f => f.name),
+    latest: fileStats[0].name,
+    equipment: fileStats.filter(f => f.name.includes('all-equipment')).map(f => f.name),
+    tractorHouse: fileStats.filter(f => f.name.includes('tractor-house')).map(f => f.name)
+  };
 }
 
-async function analyzeExcelData(filename) {
-  console.log(`\nAnalyzing: ${filename}`);
+async function analyzeExcelData(filenames) {
+  console.log(`\nAnalyzing ${filenames.length} file(s):`);
+  filenames.forEach(f => console.log(`  - ${f}`));
   console.log('='.repeat(60));
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filename);
-  
   const locationStats = {};
+  const allItems = { used: [], tractorHouse: [] };
   let totalProducts = 0;
+  let totalByType = { new: 0, used: 0, tractorHouse: 0 };
   
-  // Process all sheets
-  workbook.eachSheet((worksheet, sheetId) => {
-    console.log(`\nProcessing sheet: ${worksheet.name}`);
+  // Process each file
+  for (const filename of filenames) {
+    console.log(`\nProcessing: ${filename}`);
     
-    let sheetTotal = 0;
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filename);
+    
+    // Determine file type
+    const isTractorHouse = filename.includes('tractor-house');
+    const isUsed = filename.includes('used-equipment') || filename.includes('all-equipment');
+    
+    // Process all sheets
+    workbook.eachSheet((worksheet, sheetId) => {
+      const sheetName = worksheet.name.toLowerCase();
+      console.log(`  Sheet: ${worksheet.name}`);
       
-      // Find location column (usually column 7 or 8)
-      let location = null;
-      row.eachCell((cell, colNumber) => {
-        const value = cell.value?.toString().toUpperCase().trim();
-        if (STORE_LOCATIONS[value]) {
-          location = value;
+      // Get headers
+      const headers = [];
+      worksheet.getRow(1).eachCell((cell, colNumber) => {
+        headers[colNumber] = cell.value?.toString().toLowerCase().replace(/\s+/g, '');
+      });
+      
+      let sheetTotal = 0;
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // Skip header
+        
+        const item = {};
+        let location = null;
+        
+        // Extract all relevant fields
+        row.eachCell((cell, colNumber) => {
+          const header = headers[colNumber];
+          const value = cell.value?.toString().trim();
+          
+          if (header === 'year') item.year = value;
+          else if (header === 'make' || header === 'brand') item.make = value;
+          else if (header === 'model') item.model = value;
+          else if (header === 'location') {
+            location = value?.toUpperCase().trim();
+            item.location = location;
+          }
+          else if (header === 'hours') item.hours = value;
+          
+          // Check if this cell contains a location
+          if (STORE_LOCATIONS[value?.toUpperCase().trim()]) {
+            location = value.toUpperCase().trim();
+            item.location = location;
+          }
+        });
+        
+        if (location) {
+          if (!locationStats[location]) {
+            locationStats[location] = {
+              total: 0,
+              new: 0,
+              used: 0,
+              tractorHouse: 0,
+              coordinates: STORE_LOCATIONS[location]
+            };
+          }
+          
+          locationStats[location].total++;
+          
+          // Categorize by source and collect for duplicate analysis
+          if (isTractorHouse && (sheetName.includes('tractor') || sheetName.includes('inventory'))) {
+            locationStats[location].tractorHouse++;
+            totalByType.tractorHouse++;
+            allItems.tractorHouse.push(item);
+          } else if (sheetName.includes('new')) {
+            locationStats[location].new++;
+            totalByType.new++;
+          } else if (sheetName.includes('used')) {
+            locationStats[location].used++;
+            totalByType.used++;
+            allItems.used.push(item);
+          }
+          
+          sheetTotal++;
+          totalProducts++;
         }
       });
       
-      if (location) {
-        if (!locationStats[location]) {
-          locationStats[location] = {
-            total: 0,
-            new: 0,
-            used: 0,
-            coordinates: STORE_LOCATIONS[location]
-          };
-        }
-        
-        locationStats[location].total++;
-        if (worksheet.name.toLowerCase().includes('new')) {
-          locationStats[location].new++;
-        } else if (worksheet.name.toLowerCase().includes('used')) {
-          locationStats[location].used++;
-        }
-        
-        sheetTotal++;
-        totalProducts++;
-      }
+      console.log(`    Found ${sheetTotal} products with location data`);
     });
-    
-    console.log(`  Found ${sheetTotal} products with location data`);
-  });
+  }
   
-  console.log(`\nTotal products analyzed: ${totalProducts}`);
-  console.log(`Unique locations: ${Object.keys(locationStats).length}`);
+  console.log(`\n${'='.repeat(60)}`);
+  console.log('Summary:');
+  console.log(`  Total products analyzed: ${totalProducts}`);
+  console.log(`  New Equipment: ${totalByType.new}`);
+  console.log(`  Used Equipment: ${totalByType.used}`);
+  console.log(`  Tractor House: ${totalByType.tractorHouse}`);
+  console.log(`  Unique locations: ${Object.keys(locationStats).length}`);
   
-  return locationStats;
+  return { locationStats, totalByType, allItems };
 }
 
-function generateHeatmapHTML(locationStats, sourceFile) {
+// Detect duplicates between used and Tractor House
+function detectDuplicates(usedItems, tractorHouseItems) {
+  console.log(`\nAnalyzing duplicates between Used Equipment and Tractor House...`);
+  
+  const usedKeys = new Map();
+  usedItems.forEach(item => {
+    const key = createMatchKey(item);
+    if (key && key !== '|||') {
+      usedKeys.set(key, item);
+    }
+  });
+  
+  let duplicates = 0;
+  tractorHouseItems.forEach(item => {
+    const key = createMatchKey(item);
+    if (key && key !== '|||' && usedKeys.has(key)) {
+      duplicates++;
+    }
+  });
+  
+  const overlapPercent = usedItems.length > 0 
+    ? ((duplicates / usedItems.length) * 100).toFixed(1)
+    : 0;
+  
+  const uniqueUsed = usedItems.length - duplicates;
+  const uniqueTractorHouse = tractorHouseItems.length - duplicates;
+  const totalUnique = uniqueUsed + uniqueTractorHouse;
+  
+  console.log(`  Duplicates found: ${duplicates}`);
+  console.log(`  Overlap: ${overlapPercent}% of Used Equipment`);
+  console.log(`  Unique Used Equipment: ${uniqueUsed}`);
+  console.log(`  Unique Tractor House: ${uniqueTractorHouse}`);
+  console.log(`  Total unique items: ${totalUnique}`);
+  
+  return {
+    duplicates,
+    overlapPercent,
+    uniqueUsed,
+    uniqueTractorHouse,
+    totalUnique
+  };
+}
+
+function generateHeatmapHTML(locationStats, sourceFiles, totalByType, duplicateInfo) {
   const locations = Object.entries(locationStats)
     .map(([name, data]) => ({
       name,
@@ -118,9 +233,10 @@ function generateHeatmapHTML(locationStats, sourceFile) {
     }))
     .sort((a, b) => b.total - a.total);
   
-  // Extract timestamp from filename (format: akrs-all-equipment-2026-01-27T03-41-58.xlsx)
+  // Use the most recent file for timestamp
+  const latestFile = sourceFiles[0];
   let timestamp = 'Unknown';
-  const timestampMatch = sourceFile.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  const timestampMatch = latestFile.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
   if (timestampMatch) {
     const [_, year, month, day, hour, minute, second] = timestampMatch;
     const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
@@ -132,6 +248,9 @@ function generateHeatmapHTML(locationStats, sourceFile) {
       minute: '2-digit'
     });
   }
+  
+  // Create source list
+  const sourceList = sourceFiles.map(f => f.replace('.xlsx', '')).join(', ');
   
   // Calculate center of Nebraska
   const centerLat = 41.5;
@@ -374,11 +493,12 @@ function generateHeatmapHTML(locationStats, sourceFile) {
     <div class="header">
         <h1>🗺️ AKRS Equipment Distribution Map</h1>
         <p>Interactive heat map showing equipment inventory across Nebraska locations</p>
-        <p style="font-size: 12px; opacity: 0.8; margin-top: 5px;">📊 Data Source: ${sourceFile} | Data Scraped: ${timestamp}</p>
+        <p style="font-size: 11px; opacity: 0.7;">Latest Data: ${timestamp}</p>
         <div class="toggle-container">
             <button class="toggle-btn active" data-filter="all">All Equipment</button>
             <button class="toggle-btn" data-filter="new">New Equipment</button>
             <button class="toggle-btn" data-filter="used">Used Equipment</button>
+            <button class="toggle-btn" data-filter="tractorHouse">Tractor House</button>
         </div>
     </div>
     
@@ -401,8 +521,31 @@ function generateHeatmapHTML(locationStats, sourceFile) {
                     <span class="stat-value" id="used-products">0</span>
                 </div>
                 <div class="stat-item">
+                    <span class="stat-label">Tractor House</span>
+                    <span class="stat-value" id="tractorhouse-products">0</span>
+                </div>
+                <div class="stat-item">
                     <span class="stat-label">Store Locations</span>
                     <span class="stat-value" id="location-count">0</span>
+                </div>
+            </div>
+            
+            <div class="stats-summary" style="margin-top: 15px; border-left: 4px solid #ff9800;">
+                <h3 style="color: #ff9800;">🔍 Duplicate Analysis</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Duplicates Found</span>
+                    <span class="stat-value">${duplicateInfo.duplicates.toLocaleString()}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Overlap Rate</span>
+                    <span class="stat-value">${duplicateInfo.overlapPercent}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total Unique Items</span>
+                    <span class="stat-value" style="color: #367C2B; font-size: 18px;">${duplicateInfo.totalUnique.toLocaleString()}</span>
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
+                    <strong>ℹ️ Note:</strong> ${duplicateInfo.overlapPercent}% of Used Equipment items also appear in Tractor House. The systems share ${duplicateInfo.duplicates} items.
                 </div>
             </div>
             
@@ -410,15 +553,15 @@ function generateHeatmapHTML(locationStats, sourceFile) {
                 <h4>Heat Map Legend</h4>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #d32f2f;"></div>
-                    <span>High Inventory (50+ products)</span>
+                    <span>High Inventory (150+ products)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #ff9800;"></div>
-                    <span>Medium Inventory (20-49 products)</span>
+                    <span>Medium Inventory (100-150 products)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #4caf50;"></div>
-                    <span>Low Inventory (1-19 products)</span>
+                    <span>Low Inventory (<100 products)</span>
                 </div>
             </div>
             
@@ -448,9 +591,9 @@ function generateHeatmapHTML(locationStats, sourceFile) {
         
         // Function to get color based on inventory size
         function getColor(count) {
-            if (count > 50) return '#d32f2f';      // Red for high
-            if (count > 20) return '#ff9800';      // Orange for medium
-            return '#4caf50';                       // Green for low
+            if (count > 150) return '#d32f2f';     // Red for high (>150)
+            if (count > 100) return '#ff9800';     // Orange for medium (100-150)
+            return '#4caf50';                       // Green for low (<100)
         }
         
         // Function to get radius based on inventory size
@@ -465,6 +608,7 @@ function generateHeatmapHTML(locationStats, sourceFile) {
         function getCount(location, filter) {
             if (filter === 'new') return location.new;
             if (filter === 'used') return location.used;
+            if (filter === 'tractorHouse') return location.tractorHouse;
             return location.total;
         }
         
@@ -519,6 +663,10 @@ function generateHeatmapHTML(locationStats, sourceFile) {
                             <span>Used Equipment:</span>
                             <strong style="color: #ff9800;">\${location.used}</strong>
                         </div>
+                        <div class="popup-stat">
+                            <span>Tractor House:</span>
+                            <strong style="color: #2196f3;">\${location.tractorHouse}</strong>
+                        </div>
                     </div>
                 \`;
                 
@@ -538,12 +686,14 @@ function generateHeatmapHTML(locationStats, sourceFile) {
             const totalProducts = locations.reduce((sum, loc) => sum + loc.total, 0);
             const totalNew = locations.reduce((sum, loc) => sum + loc.new, 0);
             const totalUsed = locations.reduce((sum, loc) => sum + loc.used, 0);
+            const totalTractorHouse = locations.reduce((sum, loc) => sum + loc.tractorHouse, 0);
             
             const activeLocations = locations.filter(loc => getCount(loc, filter) > 0).length;
             
             document.getElementById('total-products').textContent = totalProducts.toLocaleString();
             document.getElementById('new-products').textContent = totalNew.toLocaleString();
             document.getElementById('used-products').textContent = totalUsed.toLocaleString();
+            document.getElementById('tractorhouse-products').textContent = totalTractorHouse.toLocaleString();
             document.getElementById('location-count').textContent = activeLocations;
         }
         
@@ -569,6 +719,7 @@ function generateHeatmapHTML(locationStats, sourceFile) {
                     <div class="location-details">
                         <span>New: \${location.new}</span>
                         <span>Used: \${location.used}</span>
+                        <span>TH: \${location.tractorHouse}</span>
                     </div>
                 \`;
                 
@@ -609,11 +760,48 @@ async function main() {
   console.log('='.repeat(60));
   
   try {
-    // Find the latest Excel file
-    const excelFile = await findLatestExcelFile();
+    // Find all Excel files
+    const files = await findExcelFiles();
+    console.log(`\nFound ${files.all.length} Excel file(s)`);
+    
+    // Select files to analyze - prefer combined files, then include inventory
+    let filesToAnalyze = [];
+    
+    if (files.equipment.length > 0) {
+      // Use the latest equipment file
+      filesToAnalyze.push(files.equipment[0]);
+      console.log(`Using equipment file: ${files.equipment[0]}`);
+    }
+    
+    if (files.tractorHouse.length > 0) {
+      // Use the latest Tractor House file
+      filesToAnalyze.push(files.tractorHouse[0]);
+      console.log(`Using Tractor House file: ${files.tractorHouse[0]}`);
+    }
+    
+    if (filesToAnalyze.length === 0) {
+      // Fall back to just the latest file
+      filesToAnalyze.push(files.latest);
+      console.log(`Using latest file: ${files.latest}`);
+    }
     
     // Analyze the data
-    const locationStats = await analyzeExcelData(excelFile);
+    const { locationStats, totalByType, allItems } = await analyzeExcelData(filesToAnalyze);
+    
+    // Detect duplicates between used and Tractor House
+    let duplicateInfo = {
+      duplicates: 0,
+      overlapPercent: '0.0',
+      uniqueUsed: totalByType.used || 0,
+      uniqueTractorHouse: totalByType.tractorHouse || 0,
+      totalUnique: (totalByType.used || 0) + (totalByType.tractorHouse || 0)
+    };
+    
+    if (allItems.used.length > 0 && allItems.tractorHouse.length > 0) {
+      duplicateInfo = detectDuplicates(allItems.used, allItems.tractorHouse);
+    } else {
+      console.log('\nSkipping duplicate analysis (need both Used Equipment and Tractor House)');
+    }
     
     // Create docs directory if it doesn't exist
     const docsDir = 'docs';
@@ -625,7 +813,7 @@ async function main() {
     
     // Generate heat map HTML
     console.log('\nGenerating interactive map...');
-    const html = generateHeatmapHTML(locationStats, excelFile);
+    const html = generateHeatmapHTML(locationStats, filesToAnalyze, totalByType, duplicateInfo);
     
     // Save HTML file
     const outputFile = `${docsDir}/akrs-location-heatmap.html`;
@@ -634,8 +822,15 @@ async function main() {
     console.log('\n' + '='.repeat(60));
     console.log('✓ Analysis Complete!');
     console.log('='.repeat(60));
-    console.log(`Source file: ${excelFile}`);
+    console.log(`Source files: ${filesToAnalyze.join(', ')}`);
     console.log(`Map saved: ${outputFile}`);
+    
+    if (duplicateInfo.duplicates > 0) {
+      console.log('\nDuplicate Analysis:');
+      console.log(`  ${duplicateInfo.duplicates} duplicates found (${duplicateInfo.overlapPercent}% overlap)`);
+      console.log(`  Unique items: ${duplicateInfo.totalUnique.toLocaleString()} (vs ${totalByType.used + totalByType.tractorHouse} total)`);
+    }
+    
     console.log('\nTop 5 Locations by Inventory:');
     
     const sorted = Object.entries(locationStats)
@@ -643,7 +838,7 @@ async function main() {
       .slice(0, 5);
     
     sorted.forEach(([name, data], index) => {
-      console.log(`  ${index + 1}. ${name}: ${data.total} products (${data.new} new, ${data.used} used)`);
+      console.log(`  ${index + 1}. ${name}: ${data.total} products (${data.new} new, ${data.used} used, ${data.tractorHouse} tractor house)`);
     });
     
     console.log(`\n💡 Open ${outputFile} in your browser to view the map!`);
@@ -651,6 +846,7 @@ async function main() {
     
   } catch (error) {
     console.error('\n❌ Error:', error.message);
+    console.error(error.stack);
     process.exit(1);
   }
 }

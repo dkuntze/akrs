@@ -4,14 +4,16 @@ Automated web scrapers for the AKRS (John Deere dealership) website that extract
 
 ## Features
 
-✅ **1,455+ products** scraped automatically  
+✅ **2,600+ products** scraped automatically  
+✅ **Three data sources:** AKRS main site + inventory platform  
 ✅ **Parallel processing** for 70% faster scraping  
 ✅ **Location data** for every product  
 ✅ **Excel output** with filters and clickable URLs  
 ✅ **Interactive heat map** visualization  
-✅ **Two equipment types:** New and Used  
+✅ **Multiple equipment types:** New, Used, and Inventory Listings  
 ✅ **27 store locations** across Nebraska and Kansas  
 ✅ **Geographic analysis** with inventory distribution  
+✅ **Headless browser** support for JavaScript-heavy sites  
 
 ## Installation
 
@@ -59,6 +61,7 @@ open docs/akrs-location-heatmap.html
 | `npm run all` | Scrape new + used equipment | ~12 min | Excel with 2 sheets |
 | `npm start` | Scrape new equipment only | ~7 min | Excel with 1 sheet |
 | `npm run used` | Scrape used equipment only | ~5 min | Excel with 1 sheet |
+| `npm run inventory` | Scrape inventory listings (1,151 items) | ~6 min | Excel with all listings |
 | `npm run analyze` | Generate heat map | Instant | Interactive HTML map |
 
 ## Available Scripts
@@ -130,6 +133,50 @@ node scrape-used-equipment.js
 
 ---
 
+### 📋 Inventory Listings Scraper
+
+Scrapes equipment from the AKRS inventory management platform using a headless browser.
+
+```bash
+npm run inventory
+# or
+node scrape-inventory-listings.js
+```
+
+**Source:** https://www.akrsusedequipment.com/inventory  
+**Results:** ~1,151 listings across 42 pages in ~6 minutes  
+**Output:** `akrs-inventory-listings-[timestamp].xlsx`
+
+**Features:**
+- ✅ Puppeteer-based scraping (handles JavaScript-rendered content)
+- ✅ Bypasses bot protection automatically
+- ✅ Extracts 15 data fields per listing
+- ✅ Automatic pagination through all pages
+- ✅ Includes listing ID, hours, serial numbers, and more
+
+**What it does:**
+1. Launches headless Chrome browser
+2. Navigates through bot protection challenges
+3. Scrapes all 42 pages of listings (28 per page)
+4. Extracts detailed equipment information
+5. Creates formatted Excel file with auto-filters
+
+**Performance:**
+- Total: ~1,151 listings
+- Time: ~6-7 minutes
+- Pages: 42 pages at 28 listings each
+- Output: `akrs-inventory-listings-[timestamp].xlsx`
+
+**Data Columns (15 fields):**
+- Listing ID, Title, Year, Make, Model
+- Price, Hours, Serial Number, Stock Number
+- Location, Condition, Category, Description
+- Detail URL, Image URL
+
+**Note:** This scraper uses Puppeteer (headless Chrome) to handle the JavaScript-heavy inventory platform, making it different from the other scrapers which use simple HTTP requests.
+
+---
+
 ### 🗺️ Location Analyzer & Heat Map Generator
 
 Analyzes scraped data and generates an interactive heat map visualization.
@@ -167,6 +214,7 @@ All scripts generate timestamped Excel files:
 | `npm run all` | `akrs-all-equipment-[timestamp].xlsx` | Excel (2 sheets) | ~1,455 products |
 | `npm start` | `akrs-products-[timestamp].xlsx` | Excel (1 sheet) | ~511 products |
 | `npm run used` | `akrs-used-equipment-[timestamp].xlsx` | Excel (1 sheet) | ~944 products |
+| `npm run inventory` | `akrs-inventory-listings-[timestamp].xlsx` | Excel (1 sheet) | ~1,151 listings |
 | `npm run analyze` | `docs/akrs-location-heatmap.html` | Interactive Map | All locations |
 
 **Timestamp format:** `YYYY-MM-DDTHH-MM-SS`  
@@ -518,29 +566,43 @@ ISC
 
 ```
 akrs/
-├── scrape-products.js         # New equipment scraper
-├── scrape-used-equipment.js   # Used equipment scraper  
-├── scrape-all-equipment.js    # Combined scraper (recommended)
-├── analyze-locations.js       # Heat map generator
-├── package.json               # Dependencies & scripts
-├── README.md                  # This file
-└── .gitignore                 # Excluded files
+├── scrape-products.js             # New equipment scraper (Axios/Cheerio)
+├── scrape-used-equipment.js       # Used equipment scraper (Axios/Cheerio)
+├── scrape-all-equipment.js        # Combined scraper (recommended)
+├── scrape-inventory-listings.js   # Inventory platform scraper (Puppeteer)
+├── analyze-locations.js           # Heat map generator
+├── package.json                   # Dependencies & scripts
+├── README.md                      # This file
+└── .gitignore                     # Excluded files
 
 Generated Files:
-├── akrs-all-equipment-*.xlsx      # Combined data
+├── akrs-all-equipment-*.xlsx          # Combined data (new + used)
+├── akrs-products-*.xlsx               # New equipment only
+├── akrs-used-equipment-*.xlsx         # Used equipment only
+├── akrs-inventory-listings-*.xlsx     # Inventory platform listings
 ├── docs/
-│   └── akrs-location-heatmap.html # Interactive map
-└── debug-*.html                   # Temp debug files (auto-cleaned on success)
+│   └── akrs-location-heatmap.html     # Interactive map
+└── debug-*.html, debug-*.png          # Temp debug files (auto-cleaned)
 ```
 
 ## Summary
 
 This project provides a complete solution for:
-1. ✅ **Scraping** 1,455+ products from AKRS
+1. ✅ **Scraping** 2,600+ products from multiple AKRS sources
 2. ✅ **Organizing** data into professional Excel files
 3. ✅ **Visualizing** geographic distribution on interactive maps
 4. ✅ **Analyzing** inventory patterns across 27 locations
+5. ✅ **Handling** both static and JavaScript-rendered pages
 
-**Total Time:** ~12 minutes for complete scrape + instant visualization
+**Data Sources:**
+- AKRS Main Site (New Equipment): ~511 products
+- AKRS Main Site (Used Equipment): ~944 products
+- AKRS Inventory Platform: ~1,151 listings
 
-Built with ❤️ using Node.js, Cheerio, ExcelJS, and Leaflet.js
+**Technologies:**
+- **Axios + Cheerio:** Fast scraping for static content
+- **Puppeteer:** Headless browser for JavaScript-heavy sites
+- **ExcelJS:** Professional Excel file generation
+- **Leaflet.js:** Interactive map visualizations
+
+Built with ❤️ using Node.js, Cheerio, Puppeteer, ExcelJS, and Leaflet.js
